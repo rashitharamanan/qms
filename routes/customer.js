@@ -1,0 +1,15 @@
+const express = require('express');
+const router = express.Router();
+const { protect } = require('../middleware/auth');
+const cc = require('../controllers/customerController');
+router.get('/categories', cc.getCategories);
+router.get('/shops', cc.getShops);
+router.get('/shops/:id', cc.getShopDetails);
+router.get('/shops/:shopId/services', cc.getShopServices);
+router.post('/queue/join', protect, cc.joinQueue);
+router.get('/queue/my-tokens', protect, cc.getMyTokens);
+router.get('/queue/token/:id', cc.getToken);
+router.get('/queue/status', cc.getQueueStatus);
+router.put('/queue/:id/cancel', protect, cc.cancelToken);
+router.put('/queue/:id/check-in', protect, cc.checkIn);
+module.exports = router;
