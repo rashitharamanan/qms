@@ -4,35 +4,14 @@ const Queue = require('../models/Queue');
 const Category = require('../models/Category');
 
 const calculateAvgServiceTime = async (serviceId, fallbackTime) => {
-  const completed = await Queue.find({ serviceId, status: 'completed' })
-    .sort({ completedAt: -1 }).limit(10).lean();
-  
-  const safeFallback = Number(fallbackTime) || 15;
-
-  if (completed.length === 0) return safeFallback;
-  
-  const total = completed.reduce((acc, token) => {
-    const duration = (new Date(token.completedAt) - new Date(token.startedAt)) / (1000 * 60);
-    return acc + Math.max(1, duration);
-  }, 0);
-  
-  const actualAvg = Math.round(total / completed.length);
-  
-  // Blend actual average with vendor's estimated time for stability (weighting up to 5 samples)
-  if (completed.length < 5) {
-    const weight = completed.length;
-    const blended = Math.round((actualAvg * weight + safeFallback * (5 - weight)) / 5);
-    return Math.max(1, blended);
-  }
-  
-  return actualAvg;
+  return Number(fallbackTime) || 15;
 };
 
 const getDetailedWaitTime = async (token) => {
   const serviceId = token.serviceId?._id || token.serviceId;
   const shopId = token.shopId?._id || token.shopId;
   const avgServiceTime = await calculateAvgServiceTime(serviceId, token.serviceId?.estimatedTime || 15);
-  
+
   // Find current in-service or called token
   const currentInService = await Queue.findOne({
     shopId,
@@ -56,20 +35,22 @@ const getDetailedWaitTime = async (token) => {
     tokenIndex: { $lt: token.tokenIndex }
   });
 
-  const estimatedWaitTime = Math.round(remainingTime + (ahead * avgServiceTime));
+  let estimatedWaitTime = Math.round(remainingTime + (ahead * avgServiceTime));
+  if (isNaN(estimatedWaitTime)) estimatedWaitTime = 15;
+
   return { ahead, position: ahead + 1, estimatedWaitTime, avgServiceTime };
 };
 
 exports.getShops = async (req, res) => {
   try {
     const { category, city, search } = req.query;
-    const filter = {}; 
+    const filter = {};
     if (category && category !== 'all') filter.category = category;
     if (city) filter['location.city'] = new RegExp(city, 'i');
     if (search) filter.shopName = new RegExp(search, 'i');
-    
+
     const rawShops = await Shop.find(filter).lean();
-    
+
     // Process each shop safely
     const today = new Date().toISOString().split('T')[0];
     const shopsWithData = await Promise.all(rawShops.map(async (shop) => {
@@ -82,19 +63,19 @@ exports.getShops = async (req, res) => {
 
         const services = await Service.find({ shopId: shop._id, isActive: true });
         if (services.length === 0) return { ...populatedShop, waitTime: 0, totalAhead: 0, avgServiceTime: 15 };
-        
+
         const serviceMetrics = await Promise.all(services.map(async (service) => {
           try {
-            const ahead = await Queue.countDocuments({ 
-              shopId: shop._id, serviceId: service._id, date: today, 
-              status: { $in: ['waiting', 'pending'] } 
+            const ahead = await Queue.countDocuments({
+              shopId: shop._id, serviceId: service._id, date: today,
+              status: { $in: ['waiting', 'pending'] }
             });
-            
+
             const inService = await Queue.findOne({
               shopId: shop._id, serviceId: service._id, date: today,
               status: { $in: ['called', 'in-service'] }
             }).sort({ calledAt: 1 });
-            
+
             const avgTime = await calculateAvgServiceTime(service._id, service.estimatedTime || 15);
             let remaining = 0;
             if (inService && inService.calledAt) {
@@ -106,11 +87,11 @@ exports.getShops = async (req, res) => {
             return { waitTime: 15, ahead: 0, avgTime: 15 };
           }
         }));
-        
+
         const minWait = Math.min(...serviceMetrics.map(m => m.waitTime));
         const totalAhead = serviceMetrics.reduce((acc, m) => acc + m.ahead, 0);
-        const avgServiceTime = serviceMetrics[0]?.avgTime || 15;
-        
+        const avgServiceTime = services[0]?.estimatedTime || 15;
+
         return { ...populatedShop, waitTime: minWait, totalAhead, avgServiceTime };
       } catch (err) {
         // Fallback for malformed shop or population error
@@ -139,18 +120,18 @@ exports.getShopServices = async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
     const services = await Service.find({ shopId: req.params.shopId, isActive: true }).lean();
-    
+
     const servicesWithWait = await Promise.all(services.map(async (service) => {
-      const ahead = await Queue.countDocuments({ 
-        shopId: req.params.shopId, serviceId: service._id, date: today, 
-        status: { $in: ['waiting', 'pending'] } 
+      const ahead = await Queue.countDocuments({
+        shopId: req.params.shopId, serviceId: service._id, date: today,
+        status: { $in: ['waiting', 'pending'] }
       });
-      
+
       const inService = await Queue.findOne({
         shopId: req.params.shopId, serviceId: service._id, date: today,
         status: { $in: ['called', 'in-service'] }
       }).sort({ calledAt: 1 });
-      
+
       const avgTime = await calculateAvgServiceTime(service._id, service.estimatedTime || 15);
       let remaining = 0;
       if (inService && inService.calledAt) {
@@ -158,10 +139,10 @@ exports.getShopServices = async (req, res) => {
         remaining = Math.max(0, avgTime - elapsed);
       }
       const waitTime = Math.round(remaining + (ahead * avgTime));
-      
+
       return { ...service, waitTime, ahead };
     }));
-    
+
     res.json({ success: true, data: servicesWithWait });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -186,8 +167,8 @@ exports.joinQueue = async (req, res) => {
     const prefix = service.tokenPrefix || 'T';
     const tokenNumber = `${prefix}${String(tokenIndex).padStart(3, '0')}`;
     // Calculate estimated wait
-    const { position, ahead, estimatedWaitTime } = await getDetailedWaitTime({ 
-      shopId, serviceId: service, date: today, tokenIndex 
+    const { position, ahead, estimatedWaitTime } = await getDetailedWaitTime({
+      shopId, serviceId: service, date: today, tokenIndex
     });
     const token = await Queue.create({
       shopId, serviceId, customerId: req.user._id, tokenNumber, tokenIndex,
@@ -219,7 +200,7 @@ exports.getMyTokens = async (req, res) => {
         ahead = details.ahead;
         estimatedWaitTime = details.estimatedWaitTime;
       }
-      
+
       return { ...token.toObject(), position, ahead, estimatedWaitTime };
     }));
 
@@ -234,21 +215,24 @@ exports.getToken = async (req, res) => {
     const token = await Queue.findById(req.params.id)
       .populate('shopId', 'shopName location')
       .populate('serviceId', 'serviceName estimatedTime tokenPrefix');
-    
+
     if (!token) return res.status(404).json({ success: false, message: 'Token not found' });
-    
+
     let position = token.position;
     let ahead = 0;
     let estimatedWaitTime = token.estimatedWaitTime;
-    
+    let avgServiceTime = token.serviceId?.estimatedTime || 15;
+
+    const details = await getDetailedWaitTime(token);
+    avgServiceTime = details.avgServiceTime;
+
     if (['waiting', 'pending'].includes(token.status)) {
-      const details = await getDetailedWaitTime(token);
       position = details.position;
       ahead = details.ahead;
       estimatedWaitTime = details.estimatedWaitTime;
     }
-    
-    res.json({ success: true, token, position, ahead, estimatedWaitTime });
+
+    res.json({ success: true, token, position, ahead, estimatedWaitTime, avgServiceTime });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -286,16 +270,16 @@ exports.checkIn = async (req, res) => {
     const tokenId = req.params.id;
     const userId = req.user._id;
     console.log('Check-in Request:', { tokenId, userId });
-    
+
     // Find the token first to see its status regardless of user
     const token = await Queue.findById(tokenId);
     if (!token) {
       return res.status(404).json({ success: false, message: 'Token not found' });
     }
 
-    console.log('Token found for check-in:', { 
-      status: token.status, 
-      tokenUser: token.customerId, 
+    console.log('Token found for check-in:', {
+      status: token.status,
+      tokenUser: token.customerId,
       currentUser: userId,
       match: token.customerId.toString() === userId.toString()
     });
@@ -318,7 +302,7 @@ exports.checkIn = async (req, res) => {
     token.status = 'in-service';
     token.startedAt = new Date();
     await token.save();
-    
+
     req.io.to(token.shopId.toString()).emit('queue_updated', { shopId: token.shopId });
     res.json({ success: true, message: 'Checked in successfully!', data: token });
   } catch (err) {
