@@ -69,46 +69,56 @@ export default function VendorShop() {
           <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Shop Name</label>
-              <input required className="input-field" value={form.shopName} onChange={e => setForm({...form, shopName: e.target.value})} />
+              <input required className="input-field" value={form.shopName} onChange={e => setForm({ ...form, shopName: e.target.value })} />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Category</label>
-              <select required className="input-field" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+              <select required className="input-field" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
                 <option value="">Select Category</option>
                 {categories.map(c => <option key={c._id} value={c._id}>{c.icon} {c.name}</option>)}
               </select>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Phone</label>
-              <input className="input-field" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
+              <input className="input-field" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1.5">Shop Image URL</label>
-              <input className="input-field" placeholder="https://..." value={form.logo} onChange={e => setForm({...form, logo: e.target.value})} />
+              <label className="text-sm font-medium text-gray-700 block mb-1.5">Shop Image</label>
+              <div className="flex items-center gap-3">
+                {form.logo && <img src={form.logo} alt="Preview" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />}
+                <input type="file" accept="image/*" className="input-field pt-2" onChange={e => {
+                  const file = e.target.files[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setForm({ ...form, logo: reader.result });
+                    reader.readAsDataURL(file);
+                  }
+                }} />
+              </div>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Max Queue Limit</label>
-              <input type="number" min={1} max={500} className="input-field" value={form.maxQueueLimit} onChange={e => setForm({...form, maxQueueLimit: +e.target.value})} />
+              <input type="number" min={1} max={500} className="input-field" value={form.maxQueueLimit} onChange={e => setForm({ ...form, maxQueueLimit: +e.target.value })} />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Opening Time</label>
-              <input type="time" className="input-field" value={form.openTime} onChange={e => setForm({...form, openTime: e.target.value})} />
+              <input type="time" className="input-field" value={form.openTime} onChange={e => setForm({ ...form, openTime: e.target.value })} />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Closing Time</label>
-              <input type="time" className="input-field" value={form.closeTime} onChange={e => setForm({...form, closeTime: e.target.value})} />
+              <input type="time" className="input-field" value={form.closeTime} onChange={e => setForm({ ...form, closeTime: e.target.value })} />
             </div>
             <div className="sm:col-span-2">
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Description</label>
-              <textarea className="input-field resize-none" rows={2} value={form.description} onChange={e => setForm({...form, description: e.target.value})} />
+              <textarea className="input-field resize-none" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Address</label>
-              <input className="input-field" value={form["location.address"]} onChange={e => setForm({...form, "location.address": e.target.value})} />
+              <input className="input-field" value={form["location.address"]} onChange={e => setForm({ ...form, "location.address": e.target.value })} />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">City</label>
-              <input className="input-field" value={form["location.city"]} onChange={e => setForm({...form, "location.city": e.target.value})} />
+              <input className="input-field" value={form["location.city"]} onChange={e => setForm({ ...form, "location.city": e.target.value })} />
             </div>
             <div className="sm:col-span-2">
               <button type="submit" disabled={saving} className="btn-primary py-3 px-8">

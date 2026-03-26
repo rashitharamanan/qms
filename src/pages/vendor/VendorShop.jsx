@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../../services/api';
-import { Store, Save, MapPin, Clock, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Store, Save, MapPin, Clock, ShieldCheck, AlertCircle, Crosshair } from 'lucide-react';
 import toast from 'react-hot-toast';
 import DashboardLayout from '../../layouts/DashboardLayout';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
@@ -19,8 +19,8 @@ export default function VendorShop() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     shopName: '', description: '', category: '', subcategory: '',
-    phone: '', maxQueueLimit: 50,
-    location: { address: '', city: '', state: '', pincode: '' },
+    phone: '', maxQueueLimit: 50, logo: '',
+    location: { address: '', city: '', state: '', pincode: '', coordinates: { lat: 0, lng: 0 } },
     operatingHours: { open: '09:00', close: '18:00' }
   });
 
@@ -36,12 +36,13 @@ export default function VendorShop() {
             category: s.category?._id || '',
             subcategory: s.subcategory || '',
             phone: s.phone || '',
+            logo: s.logo || '',
             maxQueueLimit: s.maxQueueLimit || 50,
-            location: s.location || { address: '', city: '', state: '', pincode: '' },
+            location: s.location || { address: '', city: '', state: '', pincode: '', coordinates: { lat: 0, lng: 0 } },
             operatingHours: s.operatingHours || { open: '09:00', close: '18:00' }
           });
         }
-      }).catch(() => {}),
+      }).catch(() => { }),
       api.get('/admin/categories').then(r => setCategories(r.data.categories || []))
     ]).finally(() => setLoading(false));
   }, []);
@@ -68,6 +69,21 @@ export default function VendorShop() {
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
   const setLoc = (key, val) => setForm(f => ({ ...f, location: { ...f.location, [key]: val } }));
 
+  const handleGetLocation = () => {
+    if (navigator.geolocation) {
+      toast.loading('Fetching precise location...', { id: 'loc' });
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setLoc('coordinates', { lat: pos.coords.latitude, lng: pos.coords.longitude });
+          toast.success('Exact GPS location pinned!', { id: 'loc' });
+        },
+        (err) => {
+          toast.error('Location access denied. Please allow map access.', { id: 'loc' });
+        }
+      );
+    }
+  };
+
   const selectedCategory = categories.find(c => c._id === form.category);
 
   if (loading) return <DashboardLayout navItems={navItems}><LoadingSpinner size="lg" /></DashboardLayout>;
@@ -81,16 +97,15 @@ export default function VendorShop() {
             <h1 className="font-display text-4xl font-black text-slate-900 tracking-tight">Store Identity</h1>
             <p className="text-slate-500 font-medium mt-1">Manage your shop's presence and operational rules</p>
           </div>
-          
+
           {shop && (
-            <div className={`flex items-center gap-3 px-5 py-2.5 rounded-2xl text-sm font-black border uppercase tracking-widest ${
-              shop.isApproved === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-              shop.isApproved === 'pending' ? 'bg-amber-50 text-amber-600 border-amber-100 animate-pulse' :
-              'bg-rose-50 text-rose-600 border-rose-100'
-            }`}>
+            <div className={`flex items-center gap-3 px-5 py-2.5 rounded-2xl text-sm font-black border uppercase tracking-widest ${shop.isApproved === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                shop.isApproved === 'pending' ? 'bg-amber-50 text-amber-600 border-amber-100 animate-pulse' :
+                  'bg-rose-50 text-rose-600 border-rose-100'
+              }`}>
               {shop.isApproved === 'approved' ? <ShieldCheck className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
               {shop.isApproved === 'approved' ? 'Verified Store' :
-               shop.isApproved === 'pending' ? 'Verification Pending' : 'Action Required'}
+                shop.isApproved === 'pending' ? 'Verification Pending' : 'Action Required'}
             </div>
           )}
         </div>
@@ -118,6 +133,12 @@ export default function VendorShop() {
                     className="input-field resize-none py-4" rows={3} placeholder="Tell customers what makes your shop special..." />
                 </div>
 
+                <div className="md:col-span-2 space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Store Picture URL</label>
+                  <input type="url" value={form.logo} onChange={e => set('logo', e.target.value)}
+                    className="input-field py-4 font-bold" placeholder="https://example.com/my-shop-image.jpg" />
+                </div>
+
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Primary Category</label>
                   <select value={form.category} onChange={e => set('category', e.target.value)} className="input-field py-4 font-bold appearance-none bg-slate-50" required>
@@ -140,19 +161,30 @@ export default function VendorShop() {
 
             {/* Location */}
             <section className="glass-card p-8 border-white/60 relative overflow-hidden">
-               <div className="absolute top-0 right-0 w-48 h-48 bg-blue-500/5 blur-[60px] -mr-24 -mt-24 rounded-full" />
-               <h2 className="text-xl font-black text-slate-900 mb-8 flex items-center gap-3 relative z-10">
-                <span className="w-10 h-10 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center text-lg"><MapPin size={20} /></span>
-                Store Location
-              </h2>
+              <div className="absolute top-0 right-0 w-48 h-48 bg-blue-500/5 blur-[60px] -mr-24 -mt-24 rounded-full" />
+              <div className="flex items-center justify-between mb-8 relative z-10">
+                <h2 className="text-xl font-black text-slate-900 flex items-center gap-3">
+                  <span className="w-10 h-10 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center text-lg"><MapPin size={20} /></span>
+                  Store Location
+                </h2>
+                <button type="button" onClick={handleGetLocation} className="btn-secondary py-2 px-4 shadow-sm flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-600 border-none font-bold text-xs uppercase tracking-widest">
+                  <Crosshair size={14} /> Auto-Pin Exact GPS Location
+                </button>
+              </div>
 
               <div className="space-y-6 relative z-10">
+                {form.location.coordinates?.lat !== 0 && (
+                  <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-xl flex items-center gap-2 text-emerald-700 font-bold text-xs mb-4">
+                     <ShieldCheck size={16} /> Exact GPS Coordinates Saved: {form.location.coordinates.lat.toFixed(4)}, {form.location.coordinates.lng.toFixed(4)}
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Physical Address</label>
                   <input type="text" value={form.location.address} onChange={e => setLoc('address', e.target.value)}
                     className="input-field py-4 font-medium" placeholder="Building, Street, Area" />
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">City</label>
@@ -227,7 +259,7 @@ export default function VendorShop() {
                 <span>💡</span> Expert Tip
               </h4>
               <p className="text-xs text-slate-500 leading-relaxed font-medium">
-                Keep your shop name concise and categorize correctly to help customers find you easily when browsing nearby services.
+                Keep your shop name concise and categorize correctly. Pinning your exact GPS coordinates ensures accurate tracking for your customers!
               </p>
             </div>
           </div>
