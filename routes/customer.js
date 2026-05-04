@@ -12,4 +12,5 @@ router.get('/queue/token/:id', cc.getToken);
 router.get('/queue/status', cc.getQueueStatus);
 router.put('/queue/:id/cancel', protect, cc.cancelToken);
 router.put('/queue/:id/check-in', protect, cc.checkIn);
+router.get('/queue/history', protect, cc.getQueueHistory);
 module.exports = router;

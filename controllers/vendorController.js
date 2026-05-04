@@ -1,6 +1,7 @@
 const Shop = require('../models/Shop');
 const Service = require('../models/Service');
 const Queue = require('../models/Queue');
+const { createNotification } = require('./notificationController');
 
 exports.createShop = async (req, res) => {
   try {
@@ -51,13 +52,24 @@ exports.getDashboard = async (req, res) => {
     const shop = await Shop.findOne({ vendorId: req.user._id });
     if (!shop) return res.status(404).json({ success: false, message: 'Shop not found' });
     const today = new Date().toISOString().split('T')[0];
+
+    // Auto-activate scheduled bookings for today
+    const activated = await Queue.updateMany(
+      { shopId: shop._id, date: today, status: 'scheduled' },
+      { status: 'waiting' }
+    );
+    
+    if (activated.modifiedCount > 0) {
+      req.io.to(shop._id.toString()).emit('queue_updated', { shopId: shop._id });
+    }
+
     const [total, pending, waiting, completed, called, inService] = await Promise.all([
-      Queue.countDocuments({ shopId: shop._id, date: today }),
-      Queue.countDocuments({ shopId: shop._id, date: today, status: 'pending' }),
-      Queue.countDocuments({ shopId: shop._id, date: today, status: 'waiting' }),
+      Queue.countDocuments({ shopId: shop._id, $or: [{ date: today }, { status: { $in: ['pending', 'waiting', 'called', 'in-service'] } }] }),
+      Queue.countDocuments({ shopId: shop._id, status: 'pending' }),
+      Queue.countDocuments({ shopId: shop._id, status: 'waiting' }),
       Queue.countDocuments({ shopId: shop._id, date: today, status: 'completed' }),
-      Queue.countDocuments({ shopId: shop._id, date: today, status: 'called' }),
-      Queue.countDocuments({ shopId: shop._id, date: today, status: 'in-service' })
+      Queue.countDocuments({ shopId: shop._id, status: 'called' }),
+      Queue.countDocuments({ shopId: shop._id, status: 'in-service' })
     ]);
     res.json({ success: true, data: { total, pending, waiting, completed, called, inService, shop } });
   } catch (err) {
@@ -70,8 +82,25 @@ exports.getQueue = async (req, res) => {
     const shop = await Shop.findOne({ vendorId: req.user._id });
     if (!shop) return res.status(404).json({ success: false, message: 'Shop not found' });
     const today = new Date().toISOString().split('T')[0];
+    
+    // Auto-activate scheduled bookings for today
+    const activated = await Queue.updateMany(
+      { shopId: shop._id, date: today, status: 'scheduled' },
+      { status: 'waiting' }
+    );
+    
+    if (activated.modifiedCount > 0) {
+      req.io.to(shop._id.toString()).emit('queue_updated', { shopId: shop._id });
+    }
+
     const { serviceId } = req.query;
-    const filter = { shopId: shop._id, date: today };
+    const filter = { 
+      shopId: shop._id,
+      $or: [
+        { status: { $in: ['pending', 'waiting', 'called', 'in-service', 'scheduled'] } },
+        { date: today }
+      ]
+    };
     if (serviceId) filter.serviceId = serviceId;
     const queue = await Queue.find(filter)
       .populate('customerId', 'name phone')
@@ -108,6 +137,15 @@ exports.callNext = async (req, res) => {
     if (!next) return res.json({ success: true, message: 'No more tokens in queue', data: null });
     req.io.to(shop._id.toString()).emit('token-called', { token: next, shopId: shop._id });
     req.io.to(shop._id.toString()).emit('queue_updated', { shopId: shop._id });
+    // Notify customer
+    await createNotification({
+      userId: next.customerId._id || next.customerId,
+      type: 'token-called',
+      title: '🔔 Your Turn!',
+      message: `Token ${next.tokenNumber} has been called at ${shop.shopName}. Please proceed to the counter.`,
+      data: { tokenId: next._id, shopId: shop._id },
+      io: req.io
+    });
     res.json({ success: true, data: next });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -134,6 +172,15 @@ exports.skipToken = async (req, res) => {
     const shop = await Shop.findOne({ vendorId: req.user._id });
     req.io.to(shop._id.toString()).emit('token-skipped', { tokenId, shopId: shop._id });
     req.io.to(shop._id.toString()).emit('queue_updated', { shopId: shop._id });
+    // Notify customer
+    await createNotification({
+      userId: token.customerId,
+      type: 'token-skipped',
+      title: '⏭️ Token Skipped',
+      message: `Token ${token.tokenNumber} was skipped at ${shop.shopName}.`,
+      data: { tokenId: token._id, shopId: shop._id },
+      io: req.io
+    });
     res.json({ success: true, data: token });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -146,6 +193,15 @@ exports.completeToken = async (req, res) => {
     const token = await Queue.findByIdAndUpdate(tokenId, { status: 'completed', completedAt: new Date() }, { new: true });
     const shop = await Shop.findOne({ vendorId: req.user._id });
     req.io.to(shop._id.toString()).emit('token-completed', { tokenId, shopId: shop._id });
+    // Notify customer: completed
+    await createNotification({
+      userId: token.customerId,
+      type: 'token-completed',
+      title: '✅ Service Completed',
+      message: `Your service for token ${token.tokenNumber} at ${shop.shopName} is complete. Thank you!`,
+      data: { tokenId: token._id, shopId: shop._id },
+      io: req.io
+    });
 
     // Auto-call next waiting token
     const today = new Date().toISOString().split('T')[0];
@@ -157,6 +213,15 @@ exports.completeToken = async (req, res) => {
 
     if (next) {
       req.io.to(shop._id.toString()).emit('token-called', { token: next, shopId: shop._id });
+      // Notify next customer
+      await createNotification({
+        userId: next.customerId._id || next.customerId,
+        type: 'token-called',
+        title: '🔔 Your Turn!',
+        message: `Token ${next.tokenNumber} has been called at ${shop.shopName}. Please proceed to the counter.`,
+        data: { tokenId: next._id, shopId: shop._id },
+        io: req.io
+      });
     }
 
     req.io.to(shop._id.toString()).emit('queue_updated', { shopId: shop._id });
@@ -185,6 +250,15 @@ exports.rejectToken = async (req, res) => {
     const token = await Queue.findByIdAndUpdate(tokenId, { status: 'rejected' }, { new: true });
     const shop = await Shop.findOne({ vendorId: req.user._id });
     req.io.to(shop._id.toString()).emit('queue_updated', { shopId: shop._id });
+    // Notify customer
+    await createNotification({
+      userId: token.customerId,
+      type: 'token-rejected',
+      title: '❌ Token Rejected',
+      message: `Your token ${token.tokenNumber} was rejected at ${shop.shopName}.`,
+      data: { tokenId: token._id, shopId: shop._id },
+      io: req.io
+    });
     res.json({ success: true, data: token });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -225,6 +299,67 @@ exports.deleteService = async (req, res) => {
   try {
     await Service.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: 'Service deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Pre-booking Management
+exports.getPreBookings = async (req, res) => {
+  try {
+    const shop = await Shop.findOne({ vendorId: req.user._id });
+    if (!shop) return res.status(404).json({ success: false, message: 'Shop not found' });
+    
+    // Auto-update scheduled tokens for today to 'waiting' if shop is open?
+    // Or just let vendor see them.
+    const preBookings = await Queue.find({ 
+      shopId: shop._id, 
+      isPreBooked: true,
+      status: { $in: ['scheduled', 'pending', 'waiting', 'called', 'in-service', 'rejected'] } 
+    })
+      .populate('customerId', 'name phone')
+      .populate('serviceId', 'serviceName')
+      .sort({ date: 1, scheduledTime: 1 });
+      
+    res.json({ success: true, data: preBookings });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.confirmPreBooking = async (req, res) => {
+  try {
+    const { tokenId } = req.body;
+    const token = await Queue.findById(tokenId);
+    if (!token) return res.status(404).json({ success: false, message: 'Booking not found' });
+    
+    const today = new Date().toISOString().split('T')[0];
+    
+    // If it's already scheduled, this is a manual "Move to Queue Now" action
+    if (token.status === 'scheduled') {
+      token.status = 'waiting';
+      token.date = today; // Update date to today so it shows in live queue
+    } else {
+      // Normal confirmation: move to waiting if for today, else scheduled
+      token.status = (token.date === today) ? 'waiting' : 'scheduled';
+    }
+    
+    await token.save();
+
+    const shop = await Shop.findOne({ vendorId: req.user._id });
+    
+    // Notify customer
+    await createNotification({
+      userId: token.customerId,
+      type: 'booking-confirmed',
+      title: '✅ Booking Confirmed',
+      message: `Your booking for ${token.date} at ${token.scheduledTime} has been confirmed by ${shop.shopName}.`,
+      data: { tokenId: token._id, shopId: shop._id },
+      io: req.io
+    });
+
+    req.io.to(shop._id.toString()).emit('queue_updated', { shopId: shop._id });
+    res.json({ success: true, data: token, message: 'Booking confirmed' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

@@ -8,13 +8,16 @@ const queueSchema = new mongoose.Schema({
   tokenIndex: { type: Number, required: true },
   status: {
     type: String,
-    enum: ['pending', 'waiting', 'called', 'in-service', 'completed', 'skipped', 'cancelled', 'rejected'],
+    enum: ['scheduled', 'pending', 'waiting', 'called', 'in-service', 'completed', 'skipped', 'cancelled', 'rejected'],
     default: 'pending'
   },
   estimatedWaitTime: { type: Number, default: 0 },
   position: { type: Number },
   notes: { type: String },
   date: { type: String, required: true },
+  isPreBooked: { type: Boolean, default: false },
+  scheduledDate: { type: String },
+  scheduledTime: { type: String },
   calledAt: { type: Date },
   completedAt: { type: Date },
   createdAt: { type: Date, default: Date.now }

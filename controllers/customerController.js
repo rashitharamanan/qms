@@ -67,7 +67,7 @@ exports.getShops = async (req, res) => {
         const serviceMetrics = await Promise.all(services.map(async (service) => {
           try {
             const ahead = await Queue.countDocuments({
-              shopId: shop._id, serviceId: service._id, date: today,
+              shopId: shop._id, serviceId: service._id,
               status: { $in: ['waiting', 'pending'] }
             });
 
@@ -123,7 +123,7 @@ exports.getShopServices = async (req, res) => {
 
     const servicesWithWait = await Promise.all(services.map(async (service) => {
       const ahead = await Queue.countDocuments({
-        shopId: req.params.shopId, serviceId: service._id, date: today,
+        shopId: req.params.shopId, serviceId: service._id,
         status: { $in: ['waiting', 'pending'] }
       });
 
@@ -151,30 +151,91 @@ exports.getShopServices = async (req, res) => {
 
 exports.joinQueue = async (req, res) => {
   try {
-    const { shopId, serviceId } = req.body;
+    const { shopId, serviceId, scheduledDate, scheduledTime } = req.body;
     const shop = await Shop.findById(shopId);
-    if (!shop || !shop.isOpen) return res.status(400).json({ success: false, message: 'Shop is closed' });
+
+    // Allow pre-booking even if shop is currently closed. Only block instant booking if shop closed.
+    if (!shop) return res.status(404).json({ success: false, message: 'Shop not found' });
+    if (!scheduledDate && !shop.isOpen) return res.status(400).json({ success: false, message: 'Shop is currently closed. You can try pre-booking for later.' });
+
     const service = await Service.findById(serviceId);
     if (!service) return res.status(404).json({ success: false, message: 'Service not found' });
+
     const today = new Date().toISOString().split('T')[0];
-    // Check if customer already in queue
-    const existing = await Queue.findOne({ shopId, serviceId, customerId: req.user._id, date: today, status: { $in: ['pending', 'waiting', 'called', 'in-service'] } });
-    if (existing) return res.status(400).json({ success: false, message: 'Already in queue', data: existing });
-    // Count today's tokens
-    const count = await Queue.countDocuments({ shopId, serviceId, date: today });
-    if (count >= shop.maxQueueLimit) return res.status(400).json({ success: false, message: 'Queue is full' });
+    const targetDate = scheduledDate || today;
+
+    // Check if date & time is already booked with overlap consideration
+    if (scheduledDate && scheduledTime) {
+      const estimatedDuration = service.estimatedTime || 15;
+      
+      // Convert requested time to minutes for comparison
+      const [reqH, reqM] = scheduledTime.split(':').map(Number);
+      const reqStart = reqH * 60 + reqM;
+      const reqEnd = reqStart + estimatedDuration;
+
+      const bookings = await Queue.find({
+        shopId,
+        date: targetDate,
+        isPreBooked: true,
+        status: { $in: ['scheduled', 'pending', 'waiting', 'called', 'in-service'] }
+      }).populate('serviceId', 'estimatedTime');
+
+      const conflict = bookings.find(b => {
+        const [bH, bM] = b.scheduledTime.split(':').map(Number);
+        const bStart = bH * 60 + bM;
+        const bDuration = b.serviceId?.estimatedTime || 15;
+        const bEnd = bStart + bDuration;
+
+        // Check for overlap: (StartA < EndB) && (EndA > StartB)
+        return (reqStart < bEnd) && (reqEnd > bStart);
+      });
+
+      if (conflict) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `The time slot ${scheduledTime} conflicts with another booking (${conflict.scheduledTime}). Please choose another time.` 
+        });
+      }
+    }
+
+    // Check if customer already in queue for this exact date
+    const existing = await Queue.findOne({ shopId, serviceId, customerId: req.user._id, date: targetDate, status: { $in: ['scheduled', 'pending', 'waiting', 'called', 'in-service'] } });
+    if (existing) return res.status(400).json({ success: false, message: `Already in queue for ${targetDate}`, data: existing });
+
+    // Count tokens for the target date to generate index
+    const count = await Queue.countDocuments({ shopId, serviceId, date: targetDate });
+    if (count >= shop.maxQueueLimit) return res.status(400).json({ success: false, message: `Queue is full for ${targetDate}` });
+
     const tokenIndex = count + 1;
     const prefix = service.tokenPrefix || 'T';
     const tokenNumber = `${prefix}${String(tokenIndex).padStart(3, '0')}`;
-    // Calculate estimated wait
-    const { position, ahead, estimatedWaitTime } = await getDetailedWaitTime({
-      shopId, serviceId: service, date: today, tokenIndex
-    });
+
+    let position = 0;
+    let estimatedWaitTime = 0;
+    let status = 'pending';
+
+    if (scheduledDate && targetDate !== today) {
+      status = 'scheduled'; // Future date
+      estimatedWaitTime = 0;
+      position = tokenIndex; // Relative position for that day
+    } else {
+      // Calculate estimated wait for today
+      const details = await getDetailedWaitTime({
+        shopId, serviceId: service._id, date: today, tokenIndex
+      });
+      position = details.position;
+      estimatedWaitTime = details.estimatedWaitTime;
+    }
+
     const token = await Queue.create({
       shopId, serviceId, customerId: req.user._id, tokenNumber, tokenIndex,
-      date: today, estimatedWaitTime, position, status: 'pending'
+      date: targetDate, estimatedWaitTime, position, status,
+      isPreBooked: !!scheduledDate, scheduledDate, scheduledTime
     });
-    req.io.to(shopId.toString()).emit('new-token', { token, shopId });
+
+    if (targetDate === today) {
+      req.io.to(shopId.toString()).emit('new-token', { token, shopId });
+    }
     res.status(201).json({ success: true, data: { ...token.toObject(), serviceName: service.serviceName, shopName: shop.shopName } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -183,11 +244,13 @@ exports.joinQueue = async (req, res) => {
 
 exports.getMyTokens = async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
-    const tokens = await Queue.find({ customerId: req.user._id, date: today })
+    const tokens = await Queue.find({
+      customerId: req.user._id,
+      status: { $in: ['scheduled', 'pending', 'waiting', 'called', 'in-service'] }
+    })
       .populate('shopId', 'shopName location isOpen')
       .populate('serviceId', 'serviceName estimatedTime tokenPrefix')
-      .sort({ createdAt: -1 });
+      .sort({ date: 1, scheduledTime: 1, createdAt: -1 });
 
     const liveTokens = await Promise.all(tokens.map(async (token) => {
       let position = token.position;
@@ -315,6 +378,37 @@ exports.getCategories = async (req, res) => {
   try {
     const categories = await Category.find({ isActive: true });
     res.json({ success: true, data: categories });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Queue history — past tokens (completed, cancelled, skipped, rejected)
+exports.getQueueHistory = async (req, res) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const filter = {
+      customerId: req.user._id,
+      status: { $in: ['completed', 'cancelled', 'skipped', 'rejected'] }
+    };
+
+    const [tokens, total] = await Promise.all([
+      Queue.find(filter)
+        .populate('shopId', 'shopName location logo')
+        .populate('serviceId', 'serviceName estimatedTime')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit)),
+      Queue.countDocuments(filter)
+    ]);
+
+    res.json({
+      success: true,
+      data: tokens,
+      pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) }
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
