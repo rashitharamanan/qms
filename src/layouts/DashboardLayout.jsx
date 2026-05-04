@@ -33,29 +33,33 @@ export default function DashboardLayout({ children, navItems }) {
         </nav>
       </div>
 
-      <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-        <div className="flex flex-col lg:flex-row gap-6">
+      <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 pt-24 lg:pt-28">
+        <div className="flex flex-col lg:flex-row gap-8">
           {/* Desktop Sidebar */}
-          <aside className="hidden lg:block w-72 flex-shrink-0">
-            <div className="glass-card p-5 sticky top-28 border-white/60 shadow-xl shadow-lavender/10">
+          <aside className="hidden lg:block w-[280px] flex-shrink-0">
+            <div className="bg-white rounded-[2rem] p-6 sticky top-28 border border-slate-100 shadow-sm" style={{ boxShadow: '0 8px 30px rgba(155,124,189,0.06)' }}>
               <div className="mb-6 px-4">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Vendor Menu</h3>
               </div>
               <nav className="space-y-2">
-                {navItems?.map(item => (
-                  <Link 
-                    key={item.to} 
-                    to={item.to}
-                    className={`flex items-center gap-4 px-4 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 ${
-                      location.pathname === item.to 
-                      ? "gradient-bg scale-[1.02] shadow-lavender/25" 
-                      : "text-slate-600 hover:bg-lavender-pale/50 hover:text-lavender-dark"
-                    }`}
-                  >
-                    <span className="text-xl">{item.icon}</span>
-                    <span>{item.label}</span>
-                  </Link>
-                ))}
+                {navItems?.map(item => {
+                  const isActive = location.pathname === item.to;
+                  return (
+                    <Link 
+                      key={item.to} 
+                      to={item.to}
+                      className={`flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all duration-300 ${
+                        isActive 
+                        ? "text-white shadow-md scale-[1.02]" 
+                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                      }`}
+                      style={isActive ? { background: 'linear-gradient(135deg, #4A2766, #7B5C9E)', boxShadow: '0 4px 12px rgba(74,39,102,0.25)' } : {}}
+                    >
+                      <span className={`text-xl ${isActive ? 'opacity-100' : 'opacity-70 grayscale'}`}>{item.icon}</span>
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
               </nav>
 
               <div className="mt-8 pt-6 border-t border-slate-100/50 px-4">

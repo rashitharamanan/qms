@@ -12,7 +12,14 @@ export const SocketProvider = ({ children }) => {
     if (user) {
       const newSocket = io(window.location.origin.replace('5173', '5000') || 'http://localhost:5000');
       setSocket(newSocket);
-      return () => newSocket.close();
+      // Join user-specific room for notifications
+      newSocket.on('connect', () => {
+        newSocket.emit('join-user', user.id);
+      });
+      return () => {
+        newSocket.emit('leave-user', user.id);
+        newSocket.close();
+      };
     }
   }, [user]);
 

@@ -5,13 +5,24 @@ import { useAuth } from "../../context/AuthContext";
 export default function Login() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(""); setLoading(true);
+    setError(""); 
+    setEmailError("");
+    setLoading(true);
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(form.email)) {
+      setEmailError("Please enter a valid email address.");
+      setLoading(false);
+      return;
+    }
+
     try {
       const user = await login(form.email, form.password);
       if (user.role === "admin") navigate("/admin");
@@ -35,8 +46,9 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Email Address</label>
-              <input type="email" required className="input-field" placeholder="you@example.com"
-                value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
+              <input type="email" required className={`input-field ${emailError ? 'border-red-500 ring-1 ring-red-500' : ''}`} placeholder="you@example.com"
+                value={form.email} onChange={e => { setForm({...form, email: e.target.value}); setEmailError(""); }} />
+              {emailError && <p className="text-red-500 text-xs mt-1.5">{emailError}</p>}
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Password</label>
@@ -49,6 +61,7 @@ export default function Login() {
           </form>
           <div className="mt-6 pt-6 border-t border-gray-100 text-center space-y-2">
             <p className="text-sm text-gray-500">Don't have an account? <Link to="/register" className="text-lavender-dark font-medium hover:underline">Register</Link></p>
+            <p className="text-sm"><Link to="/forgot-password" className="text-purple-500 font-medium hover:underline">Forgot Password?</Link></p>
             <p className="text-xs text-gray-400">Demo: admin@qms.com / admin123</p>
           </div>
         </div>

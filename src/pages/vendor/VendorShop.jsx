@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../../services/api';
-import { Store, Save, MapPin, Clock, ShieldCheck, AlertCircle, Crosshair } from 'lucide-react';
+import { Store, Save, MapPin, Clock, ShieldCheck, AlertCircle, Crosshair, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import DashboardLayout from '../../layouts/DashboardLayout';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
@@ -21,14 +21,14 @@ export default function VendorShop() {
     shopName: '', description: '', category: '', subcategory: '',
     phone: '', maxQueueLimit: 50, logo: '',
     location: { address: '', city: '', state: '', pincode: '', coordinates: { lat: 0, lng: 0 } },
-    operatingHours: { open: '09:00', close: '18:00' }
+    openingHours: { open: '09:00', close: '18:00' }
   });
 
   useEffect(() => {
     Promise.all([
       api.get('/vendor/shop').then(r => {
-        setShop(r.data.shop);
-        const s = r.data.shop;
+        setShop(r.data.data);
+        const s = r.data.data;
         if (s) {
           setForm({
             shopName: s.shopName || '',
@@ -39,25 +39,43 @@ export default function VendorShop() {
             logo: s.logo || '',
             maxQueueLimit: s.maxQueueLimit || 50,
             location: s.location || { address: '', city: '', state: '', pincode: '', coordinates: { lat: 0, lng: 0 } },
-            operatingHours: s.operatingHours || { open: '09:00', close: '18:00' }
+            openingHours: s.openingHours || { open: '09:00', close: '18:00' }
           });
         }
       }).catch(() => { }),
-      api.get('/admin/categories').then(r => setCategories(r.data.categories || []))
+      api.get('/admin/categories').then(r => setCategories(r.data.data || []))
     ]).finally(() => setLoading(false));
   }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
+    
+    let submitForm = { ...form };
+    const loc = submitForm.location;
+    if (!loc.coordinates || (loc.coordinates.lat === 0 && loc.coordinates.lng === 0)) {
+       const query = `${loc.address || ''} ${loc.city || ''} ${loc.state || ''}`.trim();
+       if (query.length > 3) {
+         try {
+           const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+           const data = await res.json();
+           if (data && data.length > 0) {
+             submitForm.location.coordinates = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+             setForm(submitForm);
+             toast.success("Automatically snapped coordinates from address!");
+           }
+         } catch(e) {}
+       }
+    }
+
     try {
       if (shop) {
-        const { data } = await api.put('/vendor/shop', form);
-        setShop(data.shop);
+        const { data } = await api.put('/vendor/shop', submitForm);
+        setShop(data.data);
         toast.success('Shop identity updated successfully!');
       } else {
         const { data } = await api.post('/vendor/shop', form);
-        setShop(data.shop);
+        setShop(data.data);
         toast.success('Registration request sent! Expect approval within 24h.');
       }
     } catch (err) {
@@ -70,17 +88,52 @@ export default function VendorShop() {
   const setLoc = (key, val) => setForm(f => ({ ...f, location: { ...f.location, [key]: val } }));
 
   const handleGetLocation = () => {
+    if (!window.confirm("QueueMS wants to access your device location to pin your shop correctly. Allow?")) return;
+
     if (navigator.geolocation) {
-      toast.loading('Fetching precise location...', { id: 'loc' });
+      toast.loading('Fetching precise location. Please allow browser prompt if asked...', { id: 'loc' });
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setLoc('coordinates', { lat: pos.coords.latitude, lng: pos.coords.longitude });
-          toast.success('Exact GPS location pinned!', { id: 'loc' });
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setLoc('coordinates', { lat, lng });
+          
+          try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+            const data = await res.json();
+            if (data && data.address) {
+              setLoc('city', data.address.city || data.address.town || data.address.village || '');
+              setLoc('state', data.address.state || '');
+              setLoc('pincode', data.address.postcode || '');
+              setLoc('address', data.address.road || data.display_name.split(',')[0] || '');
+            }
+          } catch(e) {}
+          
+          toast.success('Location pinned and address updated!', { id: 'loc' });
         },
         (err) => {
           toast.error('Location access denied. Please allow map access.', { id: 'loc' });
         }
       );
+    }
+  };
+
+  const handleGeocodeAddress = async () => {
+    const query = `${form.location.address || ''} ${form.location.city || ''} ${form.location.state || ''}`.trim();
+    if (query.length < 3) return toast.error("Please enter an address or city first");
+    
+    toast.loading('Finding coordinates from address...', { id: 'geo' });
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      if (data && data.length > 0) {
+        setLoc('coordinates', { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+        toast.success(`Found location! Coordinates pinned.`, { id: 'geo' });
+      } else {
+        toast.error("Could not find exact coordinates. Try Auto-Pin GPS instead.", { id: 'geo' });
+      }
+    } catch(err) {
+      toast.error("Error connecting to Maps API.", { id: 'geo' });
     }
   };
 
@@ -135,8 +188,15 @@ export default function VendorShop() {
 
                 <div className="md:col-span-2 space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Store Picture URL</label>
-                  <input type="url" value={form.logo} onChange={e => set('logo', e.target.value)}
-                    className="input-field py-4 font-bold" placeholder="https://example.com/my-shop-image.jpg" />
+                  <div className="flex gap-4 items-center">
+                    <input type="text" value={form.logo} onChange={e => set('logo', e.target.value)}
+                      className="input-field py-4 font-bold flex-1" placeholder="Paste an image URL here..." />
+                    {form.logo && (
+                      <div className="w-14 h-14 shrink-0 rounded-xl bg-slate-100 overflow-hidden border border-slate-200">
+                        <img src={form.logo} alt="Preview" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; }} />
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -162,14 +222,19 @@ export default function VendorShop() {
             {/* Location */}
             <section className="glass-card p-8 border-white/60 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-48 h-48 bg-blue-500/5 blur-[60px] -mr-24 -mt-24 rounded-full" />
-              <div className="flex items-center justify-between mb-8 relative z-10">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 relative z-10 gap-4">
                 <h2 className="text-xl font-black text-slate-900 flex items-center gap-3">
                   <span className="w-10 h-10 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center text-lg"><MapPin size={20} /></span>
                   Store Location
                 </h2>
-                <button type="button" onClick={handleGetLocation} className="btn-secondary py-2 px-4 shadow-sm flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-600 border-none font-bold text-xs uppercase tracking-widest">
-                  <Crosshair size={14} /> Auto-Pin Exact GPS Location
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={handleGeocodeAddress} className="btn-secondary py-2 px-4 shadow-sm flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border-none font-bold text-xs uppercase tracking-widest">
+                    <Search size={14} /> Find from Address
+                  </button>
+                  <button type="button" onClick={handleGetLocation} className="btn-secondary py-2 px-4 shadow-sm flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-600 border-none font-bold text-xs uppercase tracking-widest">
+                    <Crosshair size={14} /> Use Current Location
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-6 relative z-10">
@@ -219,14 +284,14 @@ export default function VendorShop() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Store Opens</label>
-                    <input type="time" value={form.operatingHours.open}
-                      onChange={e => setForm(f => ({ ...f, operatingHours: { ...f.operatingHours, open: e.target.value } }))}
+                    <input type="time" value={form.openingHours?.open || '09:00'}
+                      onChange={e => setForm(f => ({ ...f, openingHours: { ...f.openingHours, open: e.target.value } }))}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-lavender-light transition-all text-white font-black" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Store Closes</label>
-                    <input type="time" value={form.operatingHours.close}
-                      onChange={e => setForm(f => ({ ...f, operatingHours: { ...f.operatingHours, close: e.target.value } }))}
+                    <input type="time" value={form.openingHours?.close || '18:00'}
+                      onChange={e => setForm(f => ({ ...f, openingHours: { ...f.openingHours, close: e.target.value } }))}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-lavender-light transition-all text-white font-black" />
                   </div>
                 </div>

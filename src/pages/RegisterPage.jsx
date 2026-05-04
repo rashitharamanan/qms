@@ -33,19 +33,19 @@ export default function RegisterPage() {
             <Ticket className="w-9 h-9 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900">Create Account</h1>
-          <p className="text-gray-500 mt-1">Join QueuePro today</p>
+          <p className="text-base text-gray-500 mt-1">Join QueuePro today</p>
         </div>
 
         <div className="card">
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {/* Role Toggle */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">I am a</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2 tracking-wide">I am a</label>
               <div className="grid grid-cols-2 gap-2">
                 {['customer', 'vendor'].map(role => (
                   <button key={role} type="button"
                     onClick={() => setForm({...form, role})}
-                    className={`py-3 rounded-xl text-sm font-semibold border-2 transition-all capitalize ${
+                    className={`py-3 rounded-xl text-base font-semibold border-2 transition-all capitalize ${
                       form.role === role
                         ? 'border-lavender-400 bg-lavender-50 text-lavender-700'
                         : 'border-gray-200 text-gray-500 hover:border-gray-300'
@@ -57,7 +57,7 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Full Name</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2 tracking-wide">Full Name</label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})}
@@ -66,7 +66,7 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2 tracking-wide">Email</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})}
@@ -75,7 +75,7 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Phone</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2 tracking-wide">Phone</label>
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input type="tel" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})}
@@ -84,7 +84,7 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Password</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2 tracking-wide">Password</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input type={showPwd ? 'text' : 'password'} value={form.password}
@@ -103,7 +103,7 @@ export default function RegisterPage() {
             </button>
           </form>
 
-          <p className="text-center text-sm text-gray-500 mt-6">
+          <p className="text-center text-base text-gray-500 mt-6">
             Already have an account?{' '}
             <Link to="/login" className="text-lavender-600 font-semibold hover:underline">Sign in</Link>
           </p>

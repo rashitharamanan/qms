@@ -7,6 +7,7 @@ import { Monitor, Plus, X, Laptop, Coffee, CheckCircle2 } from "lucide-react";
 const navItems = [
   { to: "/vendor", icon: "📊", label: "Dashboard" },
   { to: "/vendor/queue", icon: "🎫", label: "Queue" },
+  { to: "/vendor/pre-bookings", icon: "📅", label: "Pre-bookings" },
   { to: "/vendor/services", icon: "⚙️", label: "Services" },
   { to: "/vendor/shop", icon: "🏪", label: "My Shop" }
 ];

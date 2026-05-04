@@ -9,6 +9,7 @@ import { formatTime12 } from "../../utils/helpers";
 const navItems = [
   { to: "/vendor", icon: "📊", label: "Dashboard" },
   { to: "/vendor/queue", icon: "🎫", label: "Queue" },
+  { to: "/vendor/pre-bookings", icon: "📅", label: "Pre-bookings" },
   { to: "/vendor/services", icon: "⚙️", label: "Services" },
   { to: "/vendor/shop", icon: "🏪", label: "My Shop" }
 ];

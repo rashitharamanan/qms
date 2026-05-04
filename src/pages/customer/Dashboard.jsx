@@ -25,27 +25,21 @@ export default function CustomerDashboard() {
 
   return (
     <MainLayout>
-      <div className="relative overflow-hidden min-h-screen">
-        {/* Background Decorative Blobs */}
-        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-lavender/10 rounded-full blur-[120px] -mr-32 -mt-32 animate-pulse"></div>
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-indigo-500/5 rounded-full blur-[100px] -ml-32 -mb-32"></div>
+      <div className="relative overflow-hidden min-h-screen bg-slate-50/50">
 
         <div className="w-full px-4 sm:px-8 xl:px-16 py-10 max-w-[1700px] mx-auto space-y-12 fade-in relative z-10">
           
           {/* Welcome Header */}
-          <div className="p-10 rounded-[3rem] bg-gradient-to-br from-slate-900 via-slate-800 to-lavender-dark text-white overflow-hidden relative shadow-2xl shadow-slate-900/20">
-            <div className="absolute top-0 right-0 w-80 h-80 bg-lavender/20 rounded-full blur-3xl -mr-20 -mt-20"></div>
-            <div className="absolute bottom-0 left-0 w-60 h-60 bg-white/5 rounded-full blur-2xl -ml-10 -mb-10"></div>
+          <div className="p-10 rounded-[3rem] bg-white border border-lavender/30 text-slate-800 overflow-hidden relative shadow-2xl shadow-lavender/10">
             <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
-              <div className="space-y-3">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-xl text-xs font-black uppercase tracking-widest border border-white/10 backdrop-blur-md">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-lavender/10 rounded-xl text-xs font-black uppercase tracking-widest border border-lavender/20 text-lavender-dark backdrop-blur-md mb-2">
                   Customer Console
                 </div>
-                <h1 className="font-display text-4xl md:text-5xl font-black tracking-tight">Welcome back, {user?.name}! 👋</h1>
-                <p className="text-white/60 font-bold text-lg max-w-xl">Your live service dashboard. Track tokens, estimated wait times, and history in one place.</p>
+                <h1 className="font-display text-3xl md:text-4xl font-black tracking-tight text-slate-900">Welcome back, {user?.name}! 👋</h1>
               </div>
               <div className="flex gap-4">
-                 <Link to="/shops" className="px-8 py-4 bg-white text-slate-900 rounded-2xl font-black text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl">
+                 <Link to="/shops" className="px-8 py-4 bg-lavender text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-lavender-dark hover:scale-105 active:scale-95 transition-all shadow-xl shadow-lavender/20">
                    Browse Shops
                  </Link>
               </div>

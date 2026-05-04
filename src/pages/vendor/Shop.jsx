@@ -6,6 +6,7 @@ import LoadingSpinner from "../../components/common/LoadingSpinner";
 const navItems = [
   { to: "/vendor", icon: "📊", label: "Dashboard" },
   { to: "/vendor/queue", icon: "🎫", label: "Queue" },
+  { to: "/vendor/pre-bookings", icon: "📅", label: "Pre-bookings" },
   { to: "/vendor/services", icon: "⚙️", label: "Services" },
   { to: "/vendor/shop", icon: "🏪", label: "My Shop" }
 ];
@@ -14,7 +15,7 @@ export default function VendorShop() {
   const [shop, setShop] = useState(null);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ shopName: "", category: "", description: "", phone: "", logo: "", maxQueueLimit: 50, "location.address": "", "location.city": "", "location.state": "", openTime: "09:00", closeTime: "21:00" });
+  const [form, setForm] = useState({ shopName: "", category: "", description: "", phone: "", logo: "", maxQueueLimit: 50, "location.address": "", "location.city": "", "location.state": "", "location.coordinates": {lat:0, lng:0}, openTime: "09:00", closeTime: "21:00" });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -27,7 +28,7 @@ export default function VendorShop() {
       if (shopRes.data.data) {
         const s = shopRes.data.data;
         setShop(s);
-        setForm({ shopName: s.shopName, category: s.category?._id || "", description: s.description || "", phone: s.phone || "", logo: s.logo || "", maxQueueLimit: s.maxQueueLimit, "location.address": s.location?.address || "", "location.city": s.location?.city || "", "location.state": s.location?.state || "", openTime: s.openingHours?.open || "09:00", closeTime: s.openingHours?.close || "21:00" });
+        setForm({ shopName: s.shopName, category: s.category?._id || "", description: s.description || "", phone: s.phone || "", logo: s.logo || "", maxQueueLimit: s.maxQueueLimit, "location.address": s.location?.address || "", "location.city": s.location?.city || "", "location.state": s.location?.state || "", "location.coordinates": s.location?.coordinates || {lat:0, lng:0}, openTime: s.openingHours?.open || "09:00", closeTime: s.openingHours?.close || "21:00" });
       }
       setLoading(false);
     });
@@ -35,7 +36,24 @@ export default function VendorShop() {
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true); setMsg(null);
-    const payload = { shopName: form.shopName, category: form.category, description: form.description, phone: form.phone, logo: form.logo, maxQueueLimit: form.maxQueueLimit, location: { address: form["location.address"], city: form["location.city"], state: form["location.state"] }, openingHours: { open: form.openTime, close: form.closeTime } };
+    let submitForm = { ...form };
+    
+    if (submitForm["location.coordinates"].lat === 0 && submitForm["location.coordinates"].lng === 0) {
+      const query = `${submitForm["location.address"]} ${submitForm["location.city"]}`.trim();
+      if (query.length > 3) {
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+          const data = await res.json();
+          if (data && data.length > 0) {
+            submitForm["location.coordinates"] = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+            setForm(submitForm);
+            setMsg({ type: "success", text: "Automatically snapped coordinates from address!" });
+          }
+        } catch(e) {}
+      }
+    }
+
+    const payload = { shopName: submitForm.shopName, category: submitForm.category, description: submitForm.description, phone: submitForm.phone, logo: submitForm.logo, maxQueueLimit: submitForm.maxQueueLimit, location: { address: submitForm["location.address"], city: submitForm["location.city"], state: submitForm["location.state"], coordinates: submitForm["location.coordinates"] }, openingHours: { open: submitForm.openTime, close: submitForm.closeTime } };
     try {
       if (shop) {
         await api.put("/vendor/shop", payload);
@@ -48,6 +66,34 @@ export default function VendorShop() {
     } catch (err) {
       setMsg({ type: "error", text: err.response?.data?.message || "Error saving shop" });
     } finally { setSaving(false); }
+  };
+
+  const handleGetLocation = () => {
+    if (!window.confirm("QueueMS wants to access your device location to pin your shop correctly. Allow?")) return;
+    if (navigator.geolocation) {
+      setMsg({ type: "success", text: "Fetching location..." });
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          let newForm = { ...form, "location.coordinates": { lat, lng } };
+          
+          try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+            const data = await res.json();
+            if (data && data.address) {
+              newForm["location.city"] = data.address.city || data.address.town || data.address.village || newForm["location.city"];
+              newForm["location.state"] = data.address.state || newForm["location.state"];
+              newForm["location.address"] = data.address.road || data.display_name.split(',')[0] || newForm["location.address"];
+            }
+          } catch(e) {}
+          
+          setForm(newForm);
+          setMsg({ type: "success", text: "Location pinned and address updated!" });
+        },
+        () => setMsg({ type: "error", text: "Location access denied." })
+      );
+    }
   };
 
   if (loading) return <DashboardLayout navItems={navItems}><LoadingSpinner /></DashboardLayout>;
@@ -86,12 +132,23 @@ export default function VendorShop() {
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Shop Image</label>
               <div className="flex items-center gap-3">
                 {form.logo && <img src={form.logo} alt="Preview" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />}
-                <input type="file" accept="image/*" className="input-field pt-2" onChange={e => {
+                <input type="file" accept="image/*" className="input-field pt-2" onChange={async e => {
                   const file = e.target.files[0];
                   if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => setForm({ ...form, logo: reader.result });
-                    reader.readAsDataURL(file);
+                    try {
+                      setSaving(true);
+                      const formData = new FormData();
+                      formData.append('logo', file);
+                      const { data } = await api.post('/upload/shop-logo', formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                      });
+                      setForm(f => ({ ...f, logo: data.data.url }));
+                      setMsg({ type: "success", text: "Logo uploaded successfully" });
+                    } catch (err) {
+                      setMsg({ type: "error", text: "Failed to upload logo: " + (err.response?.data?.message || err.message) });
+                    } finally {
+                      setSaving(false);
+                    }
                   }
                 }} />
               </div>
@@ -114,11 +171,16 @@ export default function VendorShop() {
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Address</label>
-              <input className="input-field" value={form["location.address"]} onChange={e => setForm({ ...form, "location.address": e.target.value })} />
+              <input required className="input-field" value={form["location.address"]} onChange={e => setForm({ ...form, "location.address": e.target.value })} />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">City</label>
               <input className="input-field" value={form["location.city"]} onChange={e => setForm({ ...form, "location.city": e.target.value })} />
+            </div>
+            <div className="sm:col-span-2 flex justify-start">
+              <button type="button" onClick={handleGetLocation} className="btn-secondary py-2 px-4 shadow-sm border border-gray-200 bg-white">
+                📍 Use Current Location
+              </button>
             </div>
             <div className="sm:col-span-2">
               <button type="submit" disabled={saving} className="btn-primary py-3 px-8">

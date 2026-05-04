@@ -28,7 +28,7 @@ export default function LoginPage() {
   };
 
   const fillDemo = (role) => {
-    if (role === 'admin') setForm({ email: 'admin@qms.com', password: 'admin123' });
+    if (role === 'admin') setForm({ email: 'admin@gamil.com', password: 'admin 123' });
     if (role === 'vendor') setForm({ email: 'vendor@qms.com', password: 'vendor123' });
     if (role === 'customer') setForm({ email: 'customer@qms.com', password: 'customer123' });
   };
@@ -65,7 +65,7 @@ export default function LoginPage() {
               <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})}
+                <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
                   className="input-field pl-10" placeholder="you@example.com" required />
               </div>
             </div>
@@ -74,7 +74,7 @@ export default function LoginPage() {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input type={showPwd ? 'text' : 'password'} value={form.password}
-                  onChange={e => setForm({...form, password: e.target.value})}
+                  onChange={e => setForm({ ...form, password: e.target.value })}
                   className="input-field pl-10 pr-10" placeholder="••••••••" required />
                 <button type="button" onClick={() => setShowPwd(!showPwd)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">

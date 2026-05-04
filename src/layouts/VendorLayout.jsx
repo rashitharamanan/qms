@@ -10,6 +10,7 @@ const navItems = [
   { to: '/vendor/staff', label: 'Staff members', icon: Users },
   { to: '/vendor/counters', label: 'Counters', icon: Monitor },
   { to: '/vendor/queue', label: 'Live Queue', icon: Ticket },
+  { to: '/vendor/pre-bookings', label: 'Pre-bookings', icon: Clock },
 ];
 
 export default function VendorLayout() {
