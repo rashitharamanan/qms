@@ -1,0 +1,15 @@
+const express = require('express');
+const router = express.Router();
+const { protect, authorize } = require('../middleware/auth');
+const { getDashboard, getAllShops, approveShop, rejectShop, getCategories, createCategory, updateCategory, deleteCategory, getAllUsers } = require('../controllers/adminController');
+const auth = [protect, authorize('admin')];
+router.get('/dashboard', ...auth, getDashboard);
+router.get('/shops', ...auth, getAllShops);
+router.put('/shops/:id/approve', ...auth, approveShop);
+router.put('/shops/:id/reject', ...auth, rejectShop);
+router.get('/categories', ...auth, getCategories);
+router.post('/categories', ...auth, createCategory);
+router.put('/categories/:id', ...auth, updateCategory);
+router.delete('/categories/:id', ...auth, deleteCategory);
+router.get('/users', ...auth, getAllUsers);
+module.exports = router;

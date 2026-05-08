@@ -1,0 +1,27 @@
+const express = require('express');
+const router = express.Router();
+const { protect, authorize } = require('../middleware/auth');
+const vc = require('../controllers/vendorController');
+const ac = require('../controllers/analyticsController');
+const auth = [protect, authorize('vendor')];
+router.post('/shop', ...auth, vc.createShop);
+router.get('/shop', ...auth, vc.getMyShop);
+router.put('/shop', ...auth, vc.updateShop);
+router.put('/shop/toggle', ...auth, vc.toggleShopStatus);
+router.get('/dashboard', ...auth, vc.getDashboard);
+router.get('/analytics', ...auth, ac.getAnalytics);
+router.get('/queue', ...auth, vc.getQueue);
+router.put('/queue/accept', ...auth, vc.acceptToken);
+router.put('/queue/reject', ...auth, vc.rejectToken);
+router.put('/queue/call-next', ...auth, vc.callNext);
+router.put('/queue/start', ...auth, vc.startService);
+router.put('/queue/skip', ...auth, vc.skipToken);
+router.put('/queue/complete', ...auth, vc.completeToken);
+router.get('/services', ...auth, vc.getServices);
+router.post('/services', ...auth, vc.createService);
+router.put('/services/:id', ...auth, vc.updateService);
+router.delete('/services/:id', ...auth, vc.deleteService);
+
+router.get('/pre-bookings', ...auth, vc.getPreBookings);
+router.put('/pre-bookings/confirm', ...auth, vc.confirmPreBooking);
+module.exports = router;
